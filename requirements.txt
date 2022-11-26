@@ -1,0 +1,8 @@
+altair
+pandas
+streamlit
+psycopg2-binary
+sqlalchemy
+requests
+plotly
+category_encoders
