@@ -6,7 +6,7 @@ import pdb
 import streamlit as st
 from subprocess import call
 import requests  
-import matplotlib.pyplot as plt
+import matplotlib.pylab as plt
 import seaborn as sns
 import plotly.express as px
 import math
@@ -21,6 +21,7 @@ from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 from sklearn.linear_model import Ridge
+from sklearn import metrics
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 import sklearn.metrics
@@ -32,16 +33,17 @@ import sklearn.metrics
 
 
 db=DB()
-def extract():
-    data=db.engine.execute("SELECT * FROM db_name ").fetchall()
+data=db.engine.execute("SELECT * FROM db_name ").fetchall()
+def extract(data):
+    
    # pd.from_sql()
     data =pd.DataFrame(data)
     data=data.rename(columns={0:"datasetid",1:'recordid',2:'fields',3:'geometry',4:'record_timestamp'})
     
-    print(data.head())
+    #st.write(data.head())
     return data
 
-print(extract())
+#st.write(extract())
 
 
 def transform(df):
@@ -70,21 +72,21 @@ def transform(df):
     #preprocessing for geo_shape
     for i in range(df.shape[0]):
         if (type(df['geo_shape'][i])!=dict):
-            df['geo_shape'][i]=[]
+            df['geo_shape'][i]=['']
         else:
             df['geo_shape'][i]=df['geo_shape'][i]['coordinates']
     #creation duration:
     df.drop(columns=["recordid","datasetid","geometry","fields","record_timestamp","geo_point_2d","type"],inplace=True)
     df.date_fin=pd.to_datetime(df.date_fin)
     df.date_debut=pd.to_datetime(df.date_debut)
-    df["duree(day)"]=(df["date_fin"]-df["date_debut"])/np.timedelta64(1, 'D')
+    
 
     return(df)
-rt=transform(extract())
+#rt=transform(extract())
 #pdb.set_trace()
 
 def valeurs_manquantes(Data):
-    print("\n\n les variables qui contiennent les valeurs manquantes \n",Data.loc[:, Data.isnull().any()].columns)
+    #st.write("\n\n Attributs contenant des valeurs manquantes \n",Data.loc[:, Data.isnull().any()].columns)
     percent_missing=(Data.isnull().sum()*100/Data.shape[0]).sort_values(ascending=True)
     fig = plt.figure(num=None, figsize=(20, 10), dpi=80, facecolor='w', edgecolor='k')
     plt.figure(figsize = (20,10))
@@ -93,23 +95,34 @@ def valeurs_manquantes(Data):
     plt.xlabel("Features")
     plt.ylabel("% of missing values")
     plt.bar(percent_missing.sort_values(ascending=False).index,percent_missing.sort_values(ascending=False),color=(0.1, 0.1, 0.1, 0.1),edgecolor='blue')
-    plt.show()
+    #
+    st.set_option('deprecation.showPyplotGlobalUse', False)
+    st.pyplot()
 
-def discription(Data):
+def description(Data):
     categorique = Data.select_dtypes(include='object')
     numerique= Data.select_dtypes(exclude='object')
-    print("\n")
-    print("discription des variables numerique\n",numerique.describe())
-    print("\n")
-    print("discription des variables categorique\n",categorique.describe())
-    print("\n")
-    print("les valeurs des variables categoriques\n")
-    for col in categorique:
-        if (col!='geo_shape') and (col!="coordinates"):
-            print(f'{col:-<25}{df[col].unique()[:3]}\n')
+    st.write("""
+    ##### Au premier coup d'œil, nous constatons que nos données sont condensées, et pour mieux les comprendre, nous devons faire exploser quelques-unes de leurs colonnes.
+    """)
+    
+    st.write("\n")
+    st.write("**Description des variables numerique**\n",numerique.describe())
+    st.write("\n")
+    st.write("**Description des variables categorique**\n",categorique.describe())
+    st.write("\n")
+    st.write("**Valeurs manquantes**" )
+    valeurs_manquantes(Data)
+    #st.write("les valeurs des variables categoriques\n")
+    #for col in categorique:
+        #if (col!='geo_shape') and (col!="coordinates"):
+            #st.write(f'{col:-<25}{Data[col].unique()[:3]}\n')
 
 
 def corr(Data,columns):
+    st.write("**on remarque qu'il y a une correlation entre typologie et niveau de perturbation**")
+    Data["duree(day)"]=(Data["date_fin"]-Data["date_debut"])/np.timedelta64(1, 'D')
+
     fig, ax=plt.subplots(figsize=(15,15))
     correlation=Data[columns].corr(method="pearson")
     mask = np.zeros_like(correlation, dtype=bool)
@@ -117,46 +130,73 @@ def corr(Data,columns):
     sns.heatmap(correlation,square=True, vmin=-1, mask=mask,vmax=1,cmap=sns.diverging_palette(220,10,as_cmap=True),annot=True)
     
     plt.title('PEARSON CORRELATION')
-    plt.show()
-    print("on remarque qu'il y a une correlation entre typologie et niveau de perturbation")
+    st.pyplot()
+    
+def bar_plot(Data,col1,col2):
 
+    plt.figure(figsize=[10,10])
+
+    sns.countplot(x=col1, hue=col2, edgecolor="orange", alpha=0.8, data=Data,palette="pastel")
+
+    sns.despine()
+
+    plt.title(" {}  en fonction de niveau de perturbation".format(col1),fontsize=14)
+
+    st.pyplot()
 def plot_typologie_niveau_perturbation(Data,dic_NIVEAU_PERTURBATION,dic_TYPOLOGIE):
     bar_plot(Data.assign(typologie=Data['typologie'].map(dic_TYPOLOGIE),niveau_perturbation=Data['niveau_perturbation'].map(dic_NIVEAU_PERTURBATION)),"typologie",'niveau_perturbation')
-    plt.show()
-    print('On remarque que lorsque les travaux est de typologie privé et concessionnaire on a un niveau de perturbation trés elevé ')
+    #st.pyplot()
+    st.write('**On remarque que lorsque les travaux est de typologie privé et concessionnaire on a un niveau de perturbation trés elevé.**')
 
-def plot_count_impact_de_circulation(Data,dic):
+def plot_count_impact_de_circulation(Data):
+    dic_impact_circulation={'RESTREINTE':1,'SENS_UNIQUE':2,'BARRAGE_TOTAL':3,'IMPASSE':4}
     plt.figure(figsize=[10,10])
-    i = Data['impact_circulation'].map(dic).value_counts()
 
-    sns.barplot(i.index, i.values, alpha=0.9,palette='pastel')
-    plt.title("impact de circulation")
-    plt.ylabel('Number of Occurrences', fontsize=12)
-    plt.show()
+    i = pd.DataFrame(Data['impact_circulation'].map(dic_impact_circulation).value_counts())#.map(dic)
+    i["niveau"]=i.index
+    sns.barplot(data=i,x="niveau",y="impact_circulation",alpha=0.9 ,palette='pastel')
 
-#on remarque que les travaux a paris ont un impact restrint sur la circulation 
+    plt.title("Impact de circulation")
+
+    plt.ylabel("Nombre d'ccurrences", fontsize=12)
+
+    st.pyplot()
+
+    st.write('**on remarque que les travaux à Pris ont un impact restrint sur la circulation**')
 
 
 def plot_count_par_objet(Data,dic_TYPOLOGIE):
+    st.write("**On remarque que les projets d'objet reamengement secteur durent les plus**")
+
+    Data["duree(day)"]=(Data["date_fin"]-Data["date_debut"])/np.timedelta64(1, 'D')
     Data[['duree(day)','objet']].assign(typologie=Data['objet'].map(dic_TYPOLOGIE)).groupby('objet').mean().sort_values("duree(day)",ascending=False)
     plt.figure(figsize=[10,10])
     sns.lineplot(data=Data[['duree(day)','objet']].assign(typologie=Data['objet'].map(dic_TYPOLOGIE)).groupby('objet').mean().sort_values("duree(day)",ascending=False), x='objet', y="duree(day)",palette='pastel')
     plt.xticks(rotation=90)
-    plt.show()
-    print("on remarque que les projets d'objet reamengement secteur durent les plus")
-
+    st.pyplot()
+    
 def duree_par_typologie(Data,dic_TYPOLOGIE):
-    print(Data[['duree(day)','typologie']].assign(typologie=Data['typologie'].map(dic_TYPOLOGIE)).groupby('typologie').mean())
-    print('on remarque que les travaux de typologie privé dure les plus') 
+    st.write(Data[['duree(day)','typologie']].assign(typologie=Data['typologie'].map(dic_TYPOLOGIE)).groupby('typologie').mean())
+    st.write('**On remarque que les travaux de typologie privé dure les plus**') 
 
 def nombre_par_statut(Data,dic_STATUT):
     plt.figure(figsize=[10,10])
-    i =Data.assign(statut=Data['statut'].map(dic_STATUT)).groupby('statut').count()
-    sns.barplot(i.index, i.typologie, alpha=0.9,palette='pastel')
-    plt.title("nombre de travaux ")
-    plt.ylabel('Number of Occurrences', fontsize=12)
-    plt.show()
-    print("on remarque que la majorité des travaux sont en cours de construction")
+
+    #i =pd.DataFrame(Data.assign(statut=Data['statut'].map(dic_STATUT)).groupby('statut').count())
+    
+    i =pd.DataFrame(Data.assign(statut=Data['statut'].map(dic_STATUT))[["typologie","statut"]].groupby('statut').count())
+
+    i["niveau"]=i.index
+
+    sns.barplot(data=i, x="niveau",y="typologie",alpha=0.9,palette='pastel')
+
+    plt.title("Count de statut de travaux ")
+
+    plt.ylabel("Nombre d'ccurrences", fontsize=12)
+
+    st.pyplot()
+
+    st.write("**On remarque que la majorité des travaux sont en cours de construction**")
 
 def pie(df,col,dic):
     colors = sns.color_palette('pastel')[0:10]
@@ -168,73 +208,70 @@ def pie(df,col,dic):
     labels=list(df[col].map(dic).value_counts().index)
     plt.pie(x,labels = labels, colors = colors, autopct='%.0f%%')
 
-def visualisation(df):
-    
+def visualisation(df,selected):
+    #df["duree(day)"]=(df["date_fin"]-df["date_debut"])/np.timedelta64(1, 'D')
     dic_impact_circulation={1:'RESTREINTE',2:'SENS_UNIQUE',3:'BARRAGE_TOTAL',4:'IMPASSE'}
     dic_NIVEAU_PERTURBATION	={2:'Perturbant',1:"Tres perturbant"}
     dic_NUMERO_STV={9:'Nord-Ouest',10:'Nord-Est',11:'Centre',12:'Sud',13:'Sud-Ouest',14:'Sud-Est'}
     dic_TYPOLOGIE={1:'Ville',2:'Concessionnaire',3:'Prive'} 
     dic_STATUT={1:'	A venir',2:'En cours',3:'Suspendu',4:'Prolongé',5:'Terminé'}
-    print("data shape:",df.shape)
-    print("df_info:",df.info())
-    print(df.dtypes.value_counts())
+    
 
     Data=df.copy()
-    
-    #valeurs manquantes:
-    print("valeur manquantes" )
-    valeurs_manquantes(Data)
-
-
-
     # Exploratory Data Analaysis
-    print("Exploratory Data Analaysis" )
-    discription(Data)
-    print("values counts de quelques varibales:\n")
-    columns=["niveau_perturbation","typologie","statut","impact_circulation","cp_arrondissement","numero_stv","duree(day)"]
-    for col in columns:
-        print(df[col].value_counts(),'\n\n')
+    #st.write("Exploratory Data Analaysis" )
+    #description(Data)
+    #st.write("values counts de quelques varibales:\n")
+    #columns=["niveau_perturbation","typologie","statut","impact_circulation","cp_arrondissement","numero_stv","duree(day)"]
+    #for col in columns:
+        #st.write(df[col].value_counts(),'\n\n')
     
     pie_col={"niveau_perturbation":dic_NIVEAU_PERTURBATION,"typologie":dic_TYPOLOGIE,"statut":dic_STATUT}
-    plt.figure(figsize=[20,20])
+    plt.figure(figsize=[5,5])
     n=1
     for cle, valeur in pie_col.items():
-        plt.subplots_adjust(hspace=1)
-        plt.subplot(1,3,n)
-        pie(Data,cle,valeur)
-        plt.title(" {} ".format(cle),fontsize=24)
-        n=n+1
-    plt.tight_layout()
-    plt.show()
+        if cle==selected:
+            #plt.subplots_adjust(hspace=1)
+            #plt.subplot(1,3,n)
+            pie(Data,selected,valeur)
+            #plt.title(" {} ".format(selected),fontsize=34)
+        #n=n+1
+    #plt.tight_layout()
+            st.pyplot()
 
 
-    #relation entre les variables :
-    print("relation entre les variables" )
-
-    print("correlation")
+    """#relation entre les variables :
+    st.write("Corrélation")
     Data['impact_circulation']=Data['impact_circulation'].replace({'RESTREINTE':1,'SENS_UNIQUE':2,'BARRAGE_TOTAL':3,'IMPASSE':4},regex=True)
     corr(Data,columns)
-    print("\n\n")
+    st.write("\n\n")
     
     plot_typologie_niveau_perturbation(Data,dic_NIVEAU_PERTURBATION,dic_TYPOLOGIE)
-    print("\n\n")
-    
-    plot_count_impact_de_circulation(Data,dic_impact_circulation)
-    print("\n\n")
+    st.write("\n\n")"""
+    if selected=="impact_circulation":
+        plot_count_impact_de_circulation(Data)
+         
+    elif selected=="statut":
+        nombre_par_statut(Data,dic_STATUT)
+    elif selected=="typologie/niveau_perturbation":
+        plot_typologie_niveau_perturbation(transform(extract(data)),dic_NIVEAU_PERTURBATION,dic_TYPOLOGIE)
 
-    plot_count_par_objet(Data,dic_TYPOLOGIE)
-    print("\n\n")
+
+
+    """plot_count_par_objet(Data,dic_TYPOLOGIE)
+    st.write("\n\n")
 
     duree_par_typologie(Data,dic_TYPOLOGIE)
-    print("\n\n")
+    st.write("\n\n")
 
-    nombre_par_statut(Data,dic_STATUT)
+    """
 
 
 #preprocessing before training on different model to attempt and predcit the duration of each construction work 
 
 def perprocessing(df):
     #transform date to day/month/year 
+    df["duree(day)"]=(df["date_fin"]-df["date_debut"])/np.timedelta64(1, 'D')
     train=df.copy()
     train.drop(columns=["date_debut"],inplace=True)
     #transform objet to dummy variables
@@ -258,27 +295,27 @@ def perprocessing(df):
     train.drop(columns=["maitre_ouvrage",'coordinates',"identifiant","geo_shape","precision_localisation","description",'date_fin',"voie"],axis=1,inplace=True)
     train.dropna(inplace=True)
     train.drop_duplicates(inplace=True)
-    print(train.head())
+    
 
     return (train)
 
-def regression_duree(df):
+def regression_duree(train):
     #train=perprocessing(df)
     print('\n\n')
-    print("train info",train.info())
+    #print("train info",train.info())
     x= train.drop('duree(day)', axis=1)
     y = train['duree(day)']
     print('\n\n')
-    print('colonnes:',x.columns)
+    #print('colonnes:',x.columns)
 
     seed      = 9
     test_size = 0.20
     X_train, X_test, Y_train, Y_test = train_test_split(x, y, test_size = test_size, random_state = seed)
     print('\n\n')
-    print("X_train.shape:",X_train.shape)
-    print("X_test.shape",X_test.shape)
-    print("Y_train.shape",Y_train.shape)
-    print("Y_test.shape",Y_train.shape)
+    #print("X_train.shape:",X_train.shape)
+    #print("X_test.shape",X_test.shape)
+    #print("Y_train.shape",Y_train.shape)
+    #"print("Y_test.shape",Y_train.shape)
 
     scaler = MinMaxScaler().fit(X_train)  
     X_train= scaler.transform(X_train)
@@ -296,7 +333,7 @@ def regression_duree(df):
     models["Ridge"]         = Ridge()
     models["RandomForest"]  = RandomForestRegressor()
     print('\n\n')
-    print("resultat des differents modeles\n")
+    st.write("**Resultat des differents modeles**\n")
     # 10-fold cross validation for each model
     model_results = []
     model_names   = []
@@ -314,9 +351,9 @@ def regression_duree(df):
     plt.boxplot(model_results)
     axis.set_xticklabels(model_names, rotation = 45, ha="right")
     axis.set_ylabel("Mean Absolute Error  (MAE)")
-    plt.show()
+    st.pyplot()
     print('\n\n')
-    print("on trouve que la regression Lasso est le meilleur modele a utilisé \n")
+    st.write("**On trouve que la regression Lasso est le meilleur modele a utilisé**\n")
 
     #create and fit the best regression model
     best_model =Lasso(random_state=seed)
@@ -332,7 +369,7 @@ def regression_duree(df):
 
     print('\n\n')
     # plot model's feature importance
-    print("feature importance")
+    st.write("**feature importance**")
     coefficients=best_model.coef_
     feature_importance = np.abs(coefficients)
     feature_importance = 100.0 * (feature_importance / feature_importance.max())
@@ -344,33 +381,34 @@ def regression_duree(df):
     plt.yticks(pos, x.columns[sorted_idx])
     plt.xlabel('Relative Importance')
     plt.title('Variable Importance')
-    plt.show()
+    st.pyplot()
 
     #evaluation de best_model
     print('\n\n')
-    print('evaluaton du meilleur model : Lasso')
+    st.write('**Evaluaton du meilleur model : LASSO**')
     def evaluate(model, X_test, y_test):
         predictions = model.predict(X_test)
         results=metrics.mean_squared_error(y_test, predictions)
-        print('MAE:', metrics.mean_absolute_error(predictions , y_test))
-        print('MSE:', metrics.mean_squared_error(predictions , y_test))
-        print('RMSE:', np.sqrt(metrics.mean_squared_error( predictions , y_test)))
-        print('R2 Score:' ,metrics.r2_score(y_test , predictions))
+        st.write('**MAE:**', metrics.mean_absolute_error(predictions , y_test))
+        st.write('**MSE:**', metrics.mean_squared_error(predictions , y_test))
+        st.write('**RMSE:**', np.sqrt(metrics.mean_squared_error( predictions , y_test)))
+        st.write('**R2 Score:**' ,metrics.r2_score(y_test , predictions))
         return results
     evaluate(best_model,X_test,Y_test)
-    print("le modele de regression lineaire n'explique pas assez les données ")
+    st.write("**Le modele de regression lineaire n'explique pas assez les données.**")
 
 
 
 #convert th preprocessed data to a dataframe then to a csv file 
-def load ():
-    df=transform(extract())
-    visualisation(df)
-    df.to_csv('chantiersPerturbants.csv',index=False)
+def load (data):
+    df=transform(extract(data))
+    df["duree(day)"]=(df["date_fin"]-df["date_debut"])/np.timedelta64(1, 'D')
+    #visualisation(df)
+    #df.to_csv('chantiersPerturbants.csv',index=False)
     df1=perprocessing(df)
     regression_duree(df1)
-    return df,df1
-load()
-
+    return df1#,df1
+#load(data)
+ 
 
 

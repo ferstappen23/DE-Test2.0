@@ -6,3 +6,4 @@ sqlalchemy
 requests
 plotly
 category_encoders
+seaborn=0.11.2

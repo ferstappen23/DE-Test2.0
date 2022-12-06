@@ -27,11 +27,11 @@ def _create_engine(uri, pool_recycle=300, **kwargs):
 
 class DB:
     def __init__(self):
-        self.host = "localhost"
+        self.host = "localhost" #project_db
         self.user = "postgres"
         self.password = "postgres"
         self.db = "postgres"
-        self.port = 5438
+        self.port = 5432
         self.driver = "postgresql"
         self.schema = "public"
         self.uri = f"{self.driver}://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
